@@ -1,3 +1,15 @@
+# TillerPilotRemote
+
+Remote control a TP1000+ or TP2000+ tiller pilot autopilot using the seatalk protocol over a web interface using an ESP32.
+
+Forked from APRemote by richardJG.
+
+Mayor changes are the move to PlatformIO and VSCode.
+
+Currently compiles and testing on the boat using ST2000+ currently in progress.
+
+# Original Description
+
 # APRemote
 Web based autopilot control using ESP32 and Seatalk1
 

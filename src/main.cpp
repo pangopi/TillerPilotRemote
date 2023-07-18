@@ -1,21 +1,22 @@
-/*
+#include <Arduino.h>
 
-*/
 #include <SoftwareSerial.h>
 #include "WiFi.h"
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
-#include <WebSocketsServer_Generic.h>
 #include <SPIFFS.h>
-#include "credentials.h"
 
-/*
- * 
- * credentials.h has two lines as below to define the network credentials to
- * log into
+// Function prototypes
+void readST(void *pvParameters);
+uint8_t CheckSum(const char *msg);
+void processNMEA(char *msg);
+void sendCMD(int cmd);
+bool send2ST(uint8_t cmd[]);
+void CheckBus ( void );
+
+// #include "credentials.h"
 const char * ssid = "Your_SSID_name";
 const char * password = "Your SSID password";
-*/
 
 #define MAX_BUF_SIZE 20
 #define RX_IN 14
@@ -43,7 +44,7 @@ uint8_t newCmd;
    
 
 AsyncWebServer server(80);
-WebSocketsServer webSocket(1337);
+AsyncWebSocket webSocket("/ws");
 
 SoftwareSerial mySerial;
 
@@ -52,50 +53,43 @@ void notFound(AsyncWebServerRequest *request) {
 }
 
 // Callback: receiving any WebSocket message
-void onWebSocketEvent(uint8_t client_num,
-                      WStype_t type,
-                      uint8_t * payload,
-                      size_t length) {
- 
+void onWebSocketEvent(AsyncWebSocket       *server,     //
+                      AsyncWebSocketClient *client,     //
+                      AwsEventType          type,       // the signature of this function is defined
+                      void                 *arg,        // by the `AwsEventHandler` interface
+                      uint8_t              *payload,    //
+                      size_t                length) {   //
+
   // Figure out the type of WebSocket event
   switch(type) {
  
     // Client has disconnected
-    case WStype_DISCONNECTED:
-      Serial.printf("[%u] Disconnected!\n", client_num);
-    break;
+    case WS_EVT_DISCONNECT: {
+        Serial.printf("WebSocket client #%u disconnected\n", client->id());
+        //txtWiFiDiag.printf("WebSocket client #%u disconnected\n", client->id());
+      } break;
  
     // New client has connected
-    case WStype_CONNECTED:
-    {
-        IPAddress ip = webSocket.remoteIP(client_num);
-        Serial.printf("[%u] WSsocket connection from ", client_num);
-        Serial.println(ip.toString());
-    }
-    break;
+    case WS_EVT_CONNECT: {
+        Serial.printf("WebSocket client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
+        //txtWiFiDiag.printf("WebSocket client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
+    }  break;
  
     // Handle text messages from client
-    case WStype_TEXT:
- 
+    case WS_EVT_DATA: {
       // Print out raw message
-      Serial.printf("[%u] Received text: %s\r\n", client_num, payload);
+      Serial.printf("[%u] Received text: %s\r\n", client->id(), payload);
       newCmd = payload[0] - '0';
       xQueueSend(queue, &newCmd, portMAX_DELAY);
-    break;
+      } break;
  
     // For everything else: do nothing
-    case WStype_BIN:
-    case WStype_ERROR:
-    case WStype_FRAGMENT_TEXT_START:
-    case WStype_FRAGMENT_BIN_START:
-    case WStype_FRAGMENT:
-    case WStype_FRAGMENT_FIN:
-    break;
-    default:
-    break;
+    case WS_EVT_PONG:
+    case WS_EVT_ERROR:
+      break;
   }
 }
- 
+
 
 void getData(AsyncWebServerRequest *request) {
 
@@ -314,8 +308,8 @@ void setup()
   server.begin();
 
   // Start WebSocket server and assign callback
-  webSocket.begin();
   webSocket.onEvent(onWebSocketEvent);
+  server.addHandler(&webSocket);
   
   disableCore0WDT();   // disable watchdog timer for serial port handler
    
@@ -333,7 +327,7 @@ void setup()
 
 void loop() // run over and over
 {
-  webSocket.loop();
+  webSocket.cleanupClients();
 }
 /*
  * Core 0 task handles reading data off the seatalk bus
@@ -823,6 +817,7 @@ bool send2ST(uint8_t cmd[]){
   }
   delay(100);
   digitalWrite(LED_PIN, LOW);
+  return true;
 }
 
 
